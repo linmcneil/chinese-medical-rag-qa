@@ -23,8 +23,6 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-import torch
-
 _INSTRUCTION = (
     "你是一名专业的中文医生助手。请根据患者的描述直接给出结论和可执行的日常建议："
     "先说结论，再给 2~3 条要点。不要复述问题，不要客套话，"
@@ -92,6 +90,7 @@ def build_medical_prefix(ask: str, instruction: Optional[str] = None,
 def load_generation_model(model_dir, lora_path: Optional[str] = None,
                           quantize: str = "4bit"):
     """加载基座（4bit），可选挂 LoRA 适配器，返回 (model, tokenizer)。"""
+    import torch
     from peft import PeftModel
     from transformers import (AutoModelForCausalLM, AutoTokenizer,
                               BitsAndBytesConfig)
@@ -118,6 +117,7 @@ def generate_answer(model, tokenizer, ask: str, max_new_tokens: int = 220,
                     context: Optional[str] = None, temperature: float = 0.1,
                     instruction: Optional[str] = None) -> str:
     """根据患者描述生成回答，返回清理后的紧凑文本。"""
+    import torch
     prefix = build_medical_prefix(ask, instruction=instruction, context=context)
     inputs = tokenizer(prefix, return_tensors="pt", add_special_tokens=True)
     inputs = {k: v.to(model.device) for k, v in inputs.items()}

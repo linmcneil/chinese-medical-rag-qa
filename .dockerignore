@@ -1,0 +1,22 @@
+# Git / CI
+.git/
+.github/
+.gitignore
+
+# 本机构建产物（运行时在容器内/卷里生成）
+models/
+chroma_data/
+outputs/
+
+# Python
+.venv/
+.venv-cpu/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+*.log
+
+# 本地个人文档（不入库）
+docs/CV-NOTES.md

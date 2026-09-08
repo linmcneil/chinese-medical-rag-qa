@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-09-08（升级第 5 轮：可安装 + 容器化 + 测试扩展）
+- 新增 `pyproject.toml`：`pip install -e .` 可安装；CLI 入口 `ragqa-qa / ragqa-build-index / ragqa-app / ragqa-app-gpu`；
+  重型依赖仍以 requirements-*.txt 为准，另提供 cpu/gpu 可选 extras
+- 新增 `Dockerfile` + `docker-compose.yml`：CPU 版一键容器化，首次启动自动建索引（端口 7861）
+- `app_local.py` 新增 `--server-name`（Docker 内可绑定 0.0.0.0）
+- 单元测试扩至 43 项：新增 prompts、retriever（假 collection）、生成后处理与检索保护纯逻辑测试；
+  `ragqa/inference.py` 改为 torch 函数内延迟导入，纯函数可在无 torch 环境测试
+- `start_release.sh`：修正隧道脚本名，Python 路径支持回退到 python3
+
+
 ## 2026-09-08（升级第 4 轮：生成质量收口 + 发行版调优）
 - 生成默认改为「基座 CareBot + RAG」：网页默认关 LoRA（LoRA 把语料里的营销式客套尾巴学歪了，仅保留作对比实验）
 - ragqa/inference.py 生成后处理：去提示词复读、去“答案是/参考文献/医生询问”等转场截断、整句去重、

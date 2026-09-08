@@ -10,7 +10,7 @@ a lightweight Qwen model (CPU).
 
 ## Highlights (short version)
 - I built and benchmarked the full RAG pipeline end-to-end: data → chunking → embedding → retrieval → generation → cleaning → evaluation.
-- Every stage has a reproducible script, a documented metric, and unit tests (23/23 passing, CI).
+- Every stage has a reproducible script, a documented metric, and unit tests (43/43 passing, CI).
 
 ## Key numbers (AutoDL RTX 5090, 2026-09-08)
 | Experiment | Result |
@@ -18,7 +18,7 @@ a lightweight Qwen model (CPU).
 | Retrieval Hit@1 / Hit@3 / Hit@5 | **86.5% / 90.3% / 91.1%** (1000 held-out questions, 8524 chunks) |
 | Retrieval latency | **3.5 ms/query** average (GPU) |
 | QLoRA fine-tune (vs base) | semantic similarity **0.789 → 0.851**; avg answer length 390 → 262 chars; 2 epochs in ~25 min on RTX 5090 |
-| Unit tests | chunking 14/14, data layer 9/9 (pure CPU) |
+| Unit tests | chunking 14/14, data 9/9, prompts/retriever/post-processing 20/20 (pure CPU) |
 
 ## Architecture
 ```
@@ -58,6 +58,13 @@ pip install -r requirements-cpu.txt
 python document_processer.py --device cpu
 python app_local.py --cpu-model Qwen/Qwen2.5-1.5B-Instruct   # or: snippet-only mode in UI
 ```
+Docker (CPU demo, optional):
+```bash
+docker compose up --build      # open http://127.0.0.1:7861
+```
+
+As a Python package (optional): `pip install -e .` (lightweight core only; heavy deps stay in `requirements-*.txt` / extras).
+
 GPU (full 8B version): see Chinese README (`README.md`) or `qa_system.py --help`.
 
 ## Evaluation notes (honest)

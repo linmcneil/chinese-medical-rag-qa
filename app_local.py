@@ -145,13 +145,15 @@ def build_ui(default_model):
 def main():
     ap = argparse.ArgumentParser(description="本地 CPU 版 RAG 医疗问答")
     ap.add_argument("--port", type=int, default=7861)
+    ap.add_argument("--server-name", default="127.0.0.1",
+                    help="监听地址（容器/Docker 内请用 0.0.0.0）")
     ap.add_argument("--cpu-model",
                     default="Qwen/Qwen2.5-1.5B-Instruct",
                     help="CPU 小模型 id（可用 Qwen/Qwen2.5-0.5B-Instruct）")
     ap.add_argument("--share", action="store_true")
     args = ap.parse_args()
     demo = build_ui(args.cpu_model)
-    demo.launch(server_name="127.0.0.1", server_port=args.port,
+    demo.launch(server_name=args.server_name, server_port=args.port,
                 share=args.share)
 
 

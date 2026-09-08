@@ -1,0 +1,14 @@
+services:
+  ragqa-cpu:
+    build: .
+    container_name: ragqa-cpu
+    ports:
+      - "7861:7861"
+    volumes:
+      # 模型与索引持久化：重建镜像或重启容器后不必重新下载/建索引
+      - ./models:/app/models
+      - ./chroma_data:/app/chroma_data
+    environment:
+      # 容器内默认用 0.5B（约 1GB）；想换更强可改 Qwen/Qwen2.5-1.5B-Instruct（约 3GB）
+      RAGQA_CPU_MODEL: Qwen/Qwen2.5-0.5B-Instruct
+    restart: unless-stopped

@@ -16,7 +16,7 @@
 | 检索延迟 | 平均 **3.5 ms/查询**（GPU，单次 Top-k） | 同上 |
 | 生成对比（基座 vs QLoRA） | bge 语义相似度 **0.789 → 0.851**；回答平均长度 390 → 262 字 | `outputs/semantic_summary.json` |
 | 微调成本 | 5000 条 × 2 epoch，RTX 5090 上约 **25 分钟**（QLoRA 4bit，adapter 168MB） | `docs/EXPERIMENT.md` |
-| 工程测试 | 核心纯逻辑单元测试 **23/23 通过**（分块 14 + 数据 9） | `tests/`、GitHub Actions CI |
+| 工程测试 | 核心纯逻辑单元测试 **43/43 通过**（分块 14 + 数据 9 + 逻辑 20） | `tests/`、GitHub Actions CI |
 
 一句话定位：**用向量检索把“大模型幻觉 + 缺领域知识”的问题，替换成“先查资料、再组织回答”。**
 
@@ -107,9 +107,33 @@ python qa_system.py --question "高血压患者能吃柚子吗？"
 ```bash
 python tests/test_chunking.py          # 14/14
 python tests/test_data.py              # 9/9
+python tests/test_prompts.py           # 5/5
+python tests/test_retriever.py         # 6/6
+python tests/test_inference_clean.py   # 9/9
 python -m scripts.eval_retrieval --limit 1000 --device cuda --out data/eval_result.json
 python scripts/eval_generation.py --model-dir models/CareBot_Medical \
       --lora-path outputs/lora-med-v1 --val outputs/lora-med-v1/val_split.json --limit 60
+```
+
+### 4.4 Docker 一键运行（可选，CPU 版）
+
+```bash
+docker compose up --build        # 打开 http://127.0.0.1:7861
+# 或手动：
+docker build -t ragqa-cpu .
+docker run -p 7861:7861 -v "$PWD/models:/app/models" \
+       -v "$PWD/chroma_data:/app/chroma_data" ragqa-cpu
+```
+
+> 首次启动会自动用内置样例建索引并下载 CPU 小模型（约 1–3GB）；
+> 不想下载大模型可在网页里选「仅检索摘录」模式。
+
+### 4.5 作为 Python 包安装（开发者可选）
+
+```bash
+pip install -e .            # 只装库本体与 CLI（重型依赖另行安装）
+pip install -e ".[cpu]"     # 或补 CPU 版依赖（PyTorch 请先按 CPU 源安装）
+ragqa-qa --help
 ```
 
 ---
@@ -139,8 +163,11 @@ python scripts/eval_generation.py --model-dir models/CareBot_Medical \
 ├── app_local.py            # 本地 CPU 网页版（轻量生成 / 仅检索摘录）
 ├── qa_system.py            # CLI：REPL / 单问 / 只检索
 ├── document_processer.py   # 建索引（断点续传 / --rebuild / --device）
+├── pyproject.toml          # 可安装包 + CLI 入口（ragqa-*）
+├── Dockerfile              # CPU 版容器镜像（可选）
+├── docker-compose.yml      # 一键起容器（端口 7861）
 ├── scripts/                # prepare_data / eval_retrieval / train_lora / eval_generation
-├── tests/                  # 纯 CPU 单元测试（23 项）
+├── tests/                  # 纯 CPU 单元测试（43 项）
 ├── release/                # 双击 .bat：云端隧道版 / 本地 CPU 安装与启动
 ├── data/                   # 仓库内置样例数据与评测结果（小文件）
 └── docs/                   # EXPERIMENT / ROADMAP / CHANGELOG

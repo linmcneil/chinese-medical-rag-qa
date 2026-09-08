@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chinese-medical-rag-qa"
+version = "0.1.0"
+description = "中文医疗检索增强问答（RAG QA）：Toyhom 医疗语料清洗/分块 + bge-small-zh + Chroma 检索 + 8B CareBot(GPU)/Qwen(CPU) 生成。Chinese Medical RAG QA: chunking, Chroma retrieval, 8B/CPU LLMs and honest benchmarks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "linmcneil" }]
+keywords = ["rag", "retrieval-augmented-generation", "medical-ai", "llm", "chromadb", "chinese", "nlp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# 重型依赖刻意不放进 install_requires：
+# PyTorch 需按 CUDA/CPU 自行安装；训练与生成依赖见 requirements*.txt 与下方 extras。
+dependencies = []
+
+[project.optional-dependencies]
+cpu = [
+    "requests>=2.28",
+    "transformers>=4.44",
+    "accelerate>=0.30",
+    "chromadb>=0.5.5",
+    "sentence-transformers>=3.0",
+    "gradio>=4.44",
+]
+gpu = [
+    "requests>=2.28",
+    "chromadb>=0.4.22",
+    "sentence-transformers>=2.2.2",
+    "modelscope>=1.9",
+    "transformers>=4.36",
+    "accelerate>=0.26",
+    "psutil>=5.9",
+    "bitsandbytes>=0.43",
+]
+
+[project.urls]
+Repository = "https://github.com/linmcneil/chinese-medical-rag-qa"
+Issues = "https://github.com/linmcneil/chinese-medical-rag-qa/issues"
+
+[project.scripts]
+ragqa-qa = "qa_system:main"
+ragqa-build-index = "document_processer:main"
+ragqa-app = "app_local:main"
+ragqa-app-gpu = "app_demo:main"
+
+[tool.setuptools]
+packages = ["ragqa", "scripts"]
+py-modules = ["app_demo", "app_local", "document_processer", "qa_system"]
