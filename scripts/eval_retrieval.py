@@ -81,14 +81,15 @@ def _accumulate(stats: dict, rids, gold: str, dept: str) -> None:
     return
 
 
-def _print_stats(title: str, stats: dict, n: int, extra: str = "") -> None:
+def _print_stats(title: str, stats: dict, n: int,
+                 latency_label: str = "平均单次查询延迟", extra: str = "") -> None:
     print(f"\n===== {title} =====")
     for k in KS:
         v = stats["hit"][k]
         print(f"Hit@{k:<2} {v:>5}/{n}  {100.0 * v / n:.2f}%")
     lat = stats["latencies"]
     if lat:
-        print(f"平均单次查询延迟: {1000.0 * sum(lat) / len(lat):.1f} ms ({len(lat)} 次){extra}")
+        print(f"{latency_label}: {1000.0 * sum(lat) / len(lat):.1f} ms ({len(lat)} 次){extra}")
     dh = stats["dept_hit"]
     if dh:
         print("分科室 Hit@1 / Hit@5（占本科室比例）:")
@@ -168,10 +169,15 @@ def main() -> None:
 
     _print_stats("Hit@k（纯向量 Top-k）", baseline, n)
     if rerank_stats is not None:
+        vec_lat = baseline["latencies"]
+        vec_ms = (1000.0 * sum(vec_lat) / len(vec_lat)) if vec_lat else 0.0
+        rr_lat = rerank_stats["latencies"]
+        rr_ms = (1000.0 * sum(rr_lat) / len(rr_lat)) if rr_lat else 0.0
         _print_stats("Hit@k（向量 Top-%d + %s 重排）" % (args.rerank_candidates,
                                                         args.rerank_model.rsplit("/", 1)[-1]),
                      rerank_stats, n,
-                     extra=f"；重排额外耗时 {1000.0 * sum(rerank_stats['latencies']) / max(1, len(rerank_stats['latencies'])):.1f} ms/次")
+                     latency_label="平均重排耗时(不含向量检索)",
+                     extra=f"；向量检索平均 {vec_ms:.1f} ms/次，端到端合计约 {vec_ms + rr_ms:.1f} ms/次")
     print(f"\n总耗时 {elapsed:.1f}s")
 
     if args.out:
@@ -190,14 +196,19 @@ def main() -> None:
             "elapsed_sec": round(elapsed, 3),
         }
         if rerank_stats is not None:
+            vec_sec = out["vector"]["mean_query_sec"]
             rj = _stats_to_json(rerank_stats)
             rj["model"] = args.rerank_model
             rj["candidates"] = args.rerank_candidates
+            rj["mean_rerank_sec"] = rj.pop("mean_query_sec")
+            rj["mean_vector_sec"] = vec_sec
+            if vec_sec is not None and rj["mean_rerank_sec"] is not None:
+                rj["mean_total_sec"] = round(vec_sec + rj["mean_rerank_sec"], 6)
             out["rerank"] = rj
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(out, fh, ensure_ascii=False, indent=1)
-        print(f"\\n结果已写入 {args.out}")
+        print(f"\n结果已写入 {args.out}")
 
 
 if __name__ == "__main__":
