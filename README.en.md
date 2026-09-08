@@ -10,7 +10,7 @@ a lightweight Qwen model (CPU).
 
 ## Highlights (short version)
 - I built and benchmarked the full RAG pipeline end-to-end: data → chunking → embedding → retrieval → generation → cleaning → evaluation.
-- Every stage has a reproducible script, a documented metric, and unit tests (43/43 passing, CI).
+- Every stage has a reproducible script, a documented metric, and unit tests (49/49 passing, CI).
 
 ## Key numbers (AutoDL RTX 5090, 2026-09-08)
 | Experiment | Result |
@@ -18,7 +18,7 @@ a lightweight Qwen model (CPU).
 | Retrieval Hit@1 / Hit@3 / Hit@5 | **86.5% / 90.3% / 91.1%** (1000 held-out questions, 8524 chunks) |
 | Retrieval latency | **3.5 ms/query** average (GPU) |
 | QLoRA fine-tune (vs base) | semantic similarity **0.789 → 0.851**; avg answer length 390 → 262 chars; 2 epochs in ~25 min on RTX 5090 |
-| Unit tests | chunking 14/14, data 9/9, prompts/retriever/post-processing 20/20 (pure CPU) |
+| Unit tests | chunking 14/14, data 9/9, logic 26/26 (prompts/retriever/post-processing/rerank, pure CPU) |
 
 ## Architecture
 ```
@@ -45,6 +45,8 @@ User question ──> Top-k retrieval
   irrelevant top hits automatically degrade to model-direct answers instead of poisoning the output.
 - **Answer post-processing (new)**: strips prompt replay, “reference/greeting/AI-disclaimer” tails,
   deduplicates sentences, and caps length — kills the boilerplate style found in the source corpus.
+- **Optional reranker (new)**: `--rerank` re-ranks vector top-N candidates with bge-reranker;
+  `scripts/eval_retrieval.py --rerank` reports both pure-vector and vector+rerank Hit@k in one run.
 - **A/B experiment**: base 8B vs QLoRA tuned model on held-out generation set (semantic sim & Rouge).
   The LoRA is closer to the corpus answers but also inherits its marketing-style politeness, so the
   shipped demo defaults to base + RAG with LoRA kept as an experimental toggle.

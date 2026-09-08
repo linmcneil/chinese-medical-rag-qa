@@ -27,6 +27,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     p.add_argument("--quantize", default="auto", choices=["auto", "4bit", "8bit", "none"])
     p.add_argument("--top-k", type=int, default=3)
+    p.add_argument("--rerank", action="store_true",
+                   help="可选：用 bge-reranker 对向量 top-N 二次精排（会多加载一个模型）")
+    p.add_argument("--rerank-model", default="BAAI/bge-reranker-base",
+                   help="cross-encoder 重排模型 id（默认 bge-reranker-base）")
+    p.add_argument("--rerank-candidates", type=int, default=12,
+                   help="重排前从向量库取的候选条数（需 >= --top-k）")
     p.add_argument("--max-new-tokens", type=int, default=200)
     p.add_argument("--temperature", type=float, default=0.1)
     p.add_argument("--top-p", type=float, default=0.9)
@@ -58,6 +64,27 @@ def _auto_device() -> str:
         return "cpu"
 
 
+def _candidate_k(args):
+    """需要取回多少条候选：开启重排时多取一些给精排，否则就是 top_k。"""
+    if getattr(args, "rerank", False):
+        return max(args.rerank_candidates, args.top_k)
+    return args.top_k
+
+
+def _maybe_rerank(args, question, hits):
+    """开启 --rerank 时对候选做 cross-encoder 精排，返回最终 top_k。"""
+    if not getattr(args, "rerank", False) or not hits:
+        return hits
+    from ragqa.rerank import CrossEncoderReranker
+    if args.device == "cpu":
+        device = "cpu"
+    elif args.device == "cuda":
+        device = "cuda"
+    else:
+        device = _auto_device()
+    reranker = CrossEncoderReranker(model_name=args.rerank_model,
+                                    device=device, top_k=args.top_k)
+    return reranker.rerank(question, hits)
 def _print_hits(hits) -> None:
     for i, h in enumerate(hits, 1):
         src = f"[{h['rid']}] " if h.get("rid") else ""
@@ -78,7 +105,8 @@ def _retrieve_only_loop(args) -> None:
             return
         if not q:
             continue
-        hits = retriever.query(q, top_k=args.top_k)
+        hits = retriever.query(q, top_k=_candidate_k(args))
+        hits = _maybe_rerank(args, q, hits)
         if not hits:
             print("未检索到相关医疗信息")
             continue
@@ -87,7 +115,8 @@ def _retrieve_only_loop(args) -> None:
 
 def _ask_once(args, retriever, generator, question: str) -> str:
     from ragqa.prompts import build_rag_prompt, extract_answer, format_context
-    hits = retriever.query(question, top_k=args.top_k)
+    hits = retriever.query(question, top_k=_candidate_k(args))
+    hits = _maybe_rerank(args, question, hits)
     if not hits:
         return "未检索到相关医疗信息。"
     context = format_context([h["document"] for h in hits],

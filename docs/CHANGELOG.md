@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-09-08（升级第 6 轮：可选 reranker 重排 + 开源社区化）
+- 新增 `ragqa/rerank.py`：`rerank_hits` 纯函数 + `CrossEncoderReranker`（bge-reranker-base，模型延迟加载）
+- `qa_system.py` 新增 `--rerank / --rerank-model / --rerank-candidates`：向量 top-N 候选经 cross-encoder 精排到最终 top-k
+- `scripts/eval_retrieval.py --rerank`：一次评测同时输出「纯向量 Top-k」与「向量+重排」两套 Hit@k 与延迟，结果 JSON 含 rerank 段
+- 单元测试扩至 49 项（新增 rerank 排序/截断/稳定序 6 条）；README/ROADMAP 同步
+- 新增 CONTRIBUTING.md、GitHub Issue/PR 模板
+
 ## 2026-09-08（升级第 5 轮：可安装 + 容器化 + 测试扩展）
 - 新增 `pyproject.toml`：`pip install -e .` 可安装；CLI 入口 `ragqa-qa / ragqa-build-index / ragqa-app / ragqa-app-gpu`；
   重型依赖仍以 requirements-*.txt 为准，另提供 cpu/gpu 可选 extras

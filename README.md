@@ -16,7 +16,7 @@
 | 检索延迟 | 平均 **3.5 ms/查询**（GPU，单次 Top-k） | 同上 |
 | 生成对比（基座 vs QLoRA） | bge 语义相似度 **0.789 → 0.851**；回答平均长度 390 → 262 字 | `outputs/semantic_summary.json` |
 | 微调成本 | 5000 条 × 2 epoch，RTX 5090 上约 **25 分钟**（QLoRA 4bit，adapter 168MB） | `docs/EXPERIMENT.md` |
-| 工程测试 | 核心纯逻辑单元测试 **43/43 通过**（分块 14 + 数据 9 + 逻辑 20） | `tests/`、GitHub Actions CI |
+| 工程测试 | 核心纯逻辑单元测试 **49/49 通过**（分块 14 + 数据 9 + 逻辑 26） | `tests/`、GitHub Actions CI |
 
 一句话定位：**用向量检索把“大模型幻觉 + 缺领域知识”的问题，替换成“先查资料、再组织回答”。**
 
@@ -63,7 +63,10 @@ Toyhom 医疗语料 ──> 清洗/抽样 ──> bge-small-zh ──> Chroma 85
    顶配命中与问题不相关时自动切换为“模型直接回答”，避免脏语料带偏答案。
 6. **回答后处理（新增）**：去提示词复读、去“答案是/参考文献/医生询问”等转场截断、
    整句去重、删除“祝您康复/仅供参考/AI 身份声明”等语料客套尾巴、按句号限长。
-7. **有对照的实验**：基座 vs LoRA 微调在留出集上比语义相似度与 Rouge；
+7. **可选 reranker 精排（新增）**：`--rerank` 用 bge-reranker 对向量 top-N 候选二次精排，
+   `scripts/eval_retrieval.py --rerank` 一次评测同时输出纯向量与“向量+重排”两套 Hit@k。
+
+8. **有对照的实验**：基座 vs LoRA 微调在留出集上比语义相似度与 Rouge；
    LoRA 更贴标准答案但把语料营销式客套学歪了 → 发行版默认“基座 + RAG”，LoRA 保留作对比开关。
 
 ---
@@ -110,6 +113,7 @@ python tests/test_data.py              # 9/9
 python tests/test_prompts.py           # 5/5
 python tests/test_retriever.py         # 6/6
 python tests/test_inference_clean.py   # 9/9
+python tests/test_rerank.py            # 6/6
 python -m scripts.eval_retrieval --limit 1000 --device cuda --out data/eval_result.json
 python scripts/eval_generation.py --model-dir models/CareBot_Medical \
       --lora-path outputs/lora-med-v1 --val outputs/lora-med-v1/val_split.json --limit 60
@@ -167,7 +171,7 @@ ragqa-qa --help
 ├── Dockerfile              # CPU 版容器镜像（可选）
 ├── docker-compose.yml      # 一键起容器（端口 7861）
 ├── scripts/                # prepare_data / eval_retrieval / train_lora / eval_generation
-├── tests/                  # 纯 CPU 单元测试（43 项）
+├── tests/                  # 纯 CPU 单元测试（49 项）
 ├── release/                # 双击 .bat：云端隧道版 / 本地 CPU 安装与启动
 ├── data/                   # 仓库内置样例数据与评测结果（小文件）
 └── docs/                   # EXPERIMENT / ROADMAP / CHANGELOG
@@ -188,6 +192,6 @@ ragqa-qa --help
 ## 8. 边界与后续
 
 - 目前知识库为 Toyhom 问答语料，不等于临床指南；回答未经临床审核。
-- 后续计划（按性价比）：bge-reranker 重排对比、更大留出集的 LLM-as-judge、
-  端到端延迟基准、Docker/镜像化一键部署。
+- 后续计划（按性价比）：在 GPU 上跑 `scripts/eval_retrieval.py --rerank` 出“向量+重排”真机对照数字、
+  更大留出集的 LLM-as-judge 生成评测、端到端延迟基准。
 - 更新日志见 `docs/CHANGELOG.md`；英语摘要见 `README.en.md`。

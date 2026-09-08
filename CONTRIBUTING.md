@@ -19,6 +19,7 @@ python tests/test_data.py
 python tests/test_prompts.py
 python tests/test_retriever.py
 python tests/test_inference_clean.py
+python tests/test_rerank.py
 ```
 
 ## 改动约定
