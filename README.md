@@ -13,7 +13,9 @@
 | 实验 | 关键数字 | 出处 |
 | --- | --- | --- |
 | 检索 Hit@1 / Hit@3 / Hit@5 | **86.5% / 90.3% / 91.1%**（1000 问留出样本，8524 块知识库） | `docs/EXPERIMENT.md`、`data/eval_result.json` |
-| 检索延迟 | 平均 **3.5 ms/查询**（GPU，单次 Top-k） | 同上 |
+| 检索延迟 | 平均 **5.1 ms/查询**（GPU，单次 Top-k，复测） | `data/eval_result_rerank.json` |
+| 重排对比（Top-20 + bge-reranker-base） | Hit@1 **86.5% → 91.4%**，Hit@3 90.3% → 92.3%，Hit@5 91.1% → 92.3% | 同上 |
+| 重排延迟 | 向量 5.1ms + 重排 25.1ms ≈ **30.3 ms/问**（GPU，端到端） | 同上 |
 | 生成对比（基座 vs QLoRA） | bge 语义相似度 **0.789 → 0.851**；回答平均长度 390 → 262 字 | `outputs/semantic_summary.json` |
 | 微调成本 | 5000 条 × 2 epoch，RTX 5090 上约 **25 分钟**（QLoRA 4bit，adapter 168MB） | `docs/EXPERIMENT.md` |
 | 工程测试 | 核心纯逻辑单元测试 **49/49 通过**（分块 14 + 数据 9 + 逻辑 26） | `tests/`、GitHub Actions CI |
@@ -64,7 +66,7 @@ Toyhom 医疗语料 ──> 清洗/抽样 ──> bge-small-zh ──> Chroma 85
 6. **回答后处理（新增）**：去提示词复读、去“答案是/参考文献/医生询问”等转场截断、
    整句去重、删除“祝您康复/仅供参考/AI 身份声明”等语料客套尾巴、按句号限长。
 7. **可选 reranker 精排（新增）**：`--rerank` 用 bge-reranker 对向量 top-N 候选二次精排，
-   `scripts/eval_retrieval.py --rerank` 一次评测同时输出纯向量与“向量+重排”两套 Hit@k。
+   1000 问实测：Hit@1 86.5% → 91.4%（+4.9pp），端到端约 30ms/问。
 
 8. **有对照的实验**：基座 vs LoRA 微调在留出集上比语义相似度与 Rouge；
    LoRA 更贴标准答案但把语料营销式客套学歪了 → 发行版默认“基座 + RAG”，LoRA 保留作对比开关。
@@ -192,6 +194,5 @@ ragqa-qa --help
 ## 8. 边界与后续
 
 - 目前知识库为 Toyhom 问答语料，不等于临床指南；回答未经临床审核。
-- 后续计划（按性价比）：在 GPU 上跑 `scripts/eval_retrieval.py --rerank` 出“向量+重排”真机对照数字、
-  更大留出集的 LLM-as-judge 生成评测、端到端延迟基准。
+- 后续计划（按性价比）：更大留出集的 LLM-as-judge 生成评测、端到端延迟基准、临床数据接入。
 - 更新日志见 `docs/CHANGELOG.md`；英语摘要见 `README.en.md`。

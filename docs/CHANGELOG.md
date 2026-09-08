@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## 2026-09-08（升级第 7 轮：reranker 真机对照出数）
+- 1000 问实测（8524 块，RTX 5090）：纯向量 Hit@1/3/5 = 86.5% / 90.3% / 91.1%（5.1ms/问）
+- Top-20 + bge-reranker-base 重排：Hit@1/3/5 = 91.4% / 92.3% / 92.3%，Hit@1 +4.9pp
+- 端到端约 30.3ms/问（向量 5.1ms + 重排 25.1ms）；结果见 docs/EXPERIMENT.md 与 data/eval_result_rerank.json
+- eval_retrieval 延迟口径区分「向量检索 / 重排」两段，JSON 输出 mean_vector_sec / mean_rerank_sec / mean_total_sec
+
 ## 2026-09-08（升级第 6 轮：可选 reranker 重排 + 开源社区化）
 - 新增 `ragqa/rerank.py`：`rerank_hits` 纯函数 + `CrossEncoderReranker`（bge-reranker-base，模型延迟加载）
 - `qa_system.py` 新增 `--rerank / --rerank-model / --rerank-candidates`：向量 top-N 候选经 cross-encoder 精排到最终 top-k

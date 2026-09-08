@@ -5,7 +5,7 @@
 
 ## 状态速览（2026-09-08）
 - 单元测试 49/49 通过；GitHub Actions CI 已配置（含安装性验证）
-- 检索评测（GPU，1000 问，8524 块知识库）：Hit@1/3/5 = 86.5% / 90.3% / 91.1%，平均 3.5ms/问
+- 检索评测（GPU，1000 问，8524 块知识库）：Hit@1/3/5 = 86.5% / 90.3% / 91.1%，平均 5.1ms/问
 - QLoRA 对照实验完成：语义相似度 0.789 → 0.851、Rouge-1 1.25 → 5.46（详见 docs/EXPERIMENT.md）
 - 交付：GPU 网页版（app_demo.py）+ 本地 CPU 版（app_local.py）+ CLI；内置样例数据；MIT 开源
 
@@ -23,7 +23,7 @@
 - [x] 检索评测真机出数（Hit@1/3/5、延迟、分科室，JSON 输出）
 - [x] 生成留出集对比（基座 vs LoRA：semantic 0.789→0.851、Rouge、长度）
 - [x] 生成质量工程防线：检索片段清洗 + 相关性门自动降级；去复读/客套/转场截断/限长
-- [x] bge-reranker 重排：ragqa/rerank.py + `qa_system.py --rerank` + `eval_retrieval.py --rerank` 对照输出（脚本与单测完成，真机数字待跑）
+- [x] bge-reranker 重排：ragqa/rerank.py + `qa_system.py --rerank` + `eval_retrieval.py --rerank` 对照输出（真机 1000 问已出：Hit@1 86.5% → 91.4%）
 - [ ] 混合检索（BM25 + 向量）或查询改写对比
 - [ ] 更大留出集的 LLM-as-judge 生成评测
 

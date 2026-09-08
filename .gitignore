@@ -22,6 +22,7 @@ data/raw/*
 !data/sft_train.json
 !data/dataset_info.json
 !data/eval_result.json
+!data/eval_result_rerank.json
 !data/outputs/
 data/outputs/*
 !data/outputs/semantic_summary.json

@@ -31,3 +31,29 @@
 网页演示默认改用「基座 CareBot + RAG」：LoRA 虽然 bge 语义更贴近标准答案，
 但它同时把语料里“祝您早日康复/以上意见仅供参考/积极面对疾病”等营销式客套尾巴学成了说话习惯，
 观感差；推理端已加去重、客套清理与检索相关性降级保护。LoRA 在 UI 中保留为“实验对比”开关。
+
+## 补充实验：reranker 重排对照（2026-09-08，AutoDL RTX 5090）
+
+验证「Chroma 向量 Top-20 候选 → bge-reranker-base 精排到最终 top-5」能否提升原文命中。
+
+### 设置
+- 评测：`data/eval.json` 按 seed=42 抽 1000 问；gold = 记录 rid；命中 = 最终 top-k 内包含 gold
+- 首筛：bge-small-zh + Chroma（8524 块知识库），召回 Top-20
+- 精排：BAAI/bge-reranker-base（cross-encoder，GPU），截断到 top-5
+
+### 结果（1000 问）
+| 方案 | Hit@1 | Hit@3 | Hit@5 | 延迟/问 |
+| --- | --- | --- | --- | --- |
+| 纯向量 Top-k | 86.5% | 90.3% | 91.1% | 5.1 ms |
+| Top-20 + bge-reranker-base | **91.4%** | **92.3%** | **92.3%** | +25.1 ms（合计约 30.3 ms） |
+
+Hit@1 提升 **+4.9pp**；大科室提升最明显，如消化科 Hit@1 86.6% → 94.5%。
+
+### 复现
+```bash
+python -m scripts.eval_retrieval --limit 1000 --device cuda --rerank --out data/eval_result_rerank.json
+```
+
+### 结论
+- cross-encoder 精排以约 25ms/问的代价换来 +4.9pp 的 Hit@1，适合对准确率敏感的场景；
+- 向量首筛仍是吞吐主力（Top-20 只要 5.1ms），rerank 只在最终少量候选上做二次打分，端到端约 30.3ms/问。

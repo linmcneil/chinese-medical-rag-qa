@@ -16,7 +16,9 @@ a lightweight Qwen model (CPU).
 | Experiment | Result |
 | --- | --- |
 | Retrieval Hit@1 / Hit@3 / Hit@5 | **86.5% / 90.3% / 91.1%** (1000 held-out questions, 8524 chunks) |
-| Retrieval latency | **3.5 ms/query** average (GPU) |
+| Retrieval latency | **5.1 ms/query** average (GPU, re-run) |
+| Rerank (Top-20 + bge-reranker-base) | Hit@1 **86.5% → 91.4%**, Hit@3 90.3% → 92.3%, Hit@5 91.1% → 92.3% |
+| Rerank latency | 5.1 ms vector + 25.1 ms rerank ≈ **30.3 ms/query** end-to-end (GPU) |
 | QLoRA fine-tune (vs base) | semantic similarity **0.789 → 0.851**; avg answer length 390 → 262 chars; 2 epochs in ~25 min on RTX 5090 |
 | Unit tests | chunking 14/14, data 9/9, logic 26/26 (prompts/retriever/post-processing/rerank, pure CPU) |
 
