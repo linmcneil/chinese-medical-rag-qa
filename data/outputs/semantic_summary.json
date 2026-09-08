@@ -1,0 +1,8 @@
+{
+ "n": 40,
+ "semantic_sim_base": 0.7884761095046997,
+ "semantic_sim_lora": 0.851087212562561,
+ "delta": 0.06261110305786133,
+ "rouge1_base": 1.25,
+ "rouge1_lora": 5.46
+}

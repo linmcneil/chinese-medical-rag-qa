@@ -1,0 +1,9 @@
+{
+ "source": "toyhom:样例_内科5000-6000.csv",
+ "department": "内科",
+ "train_size": 5000,
+ "eval_size": 1000,
+ "seed": 42,
+ "license_note": "数据整理自 Toyhom/Chinese-medical-dialogue-data（研究用途），以该仓库 LICENSE 为准",
+ "created_at": "2026-09-08 09:21:01"
+}

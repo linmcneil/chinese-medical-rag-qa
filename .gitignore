@@ -1,0 +1,34 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+.venv-cpu/
+*.egg-info/
+dist/
+build/
+
+# ---- 可复现生成物（由脚本生成，不入库）----
+models/
+chroma_data/
+outputs/
+
+# ---- 数据：默认忽略，放行仓库内置的样例与小型评测结果 ----
+data/*
+!data/raw/
+data/raw/*
+!data/raw/*.csv
+!data/train.json
+!data/eval.json
+!data/sft_train.json
+!data/dataset_info.json
+!data/eval_result.json
+!data/outputs/
+data/outputs/*
+!data/outputs/semantic_summary.json
+
+# ---- 杂项 ----
+*.log
+.DS_Store
+Thumbs.db
+# ---- 本地个人文档（仅本机保留，不发布到公开仓库）----
+docs/CV-NOTES.md

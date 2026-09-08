@@ -1,0 +1,13 @@
+# 本地 CPU 发行版依赖
+# 建议先单独安装 CPU 版 PyTorch（约 200MB）：
+#   python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+# 然后再执行：python -m pip install -r requirements-cpu.txt
+#
+# GPU 发行版请使用根目录 requirements.txt，并按 CUDA 版本安装 torch。
+
+requests>=2.28
+transformers>=4.44
+accelerate>=0.30
+chromadb>=0.5.5
+sentence-transformers>=3.0
+gradio>=4.44

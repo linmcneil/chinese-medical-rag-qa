@@ -1,0 +1,19 @@
+# ---------- 数据准备（prepare_data.py）----------
+requests>=2.28
+
+# ---------- 向量索引与检索（document_processer / eval）----------
+chromadb>=0.4.22
+sentence-transformers>=2.2.2
+
+# ---------- 模型下载与问答生成（qa_system）----------
+modelscope>=1.9
+transformers>=4.36
+accelerate>=0.26
+psutil>=5.9
+
+# GPU 量化（CUDA 环境建议安装；纯 CPU 可注释掉）
+bitsandbytes>=0.43
+
+# 若使用 GPU，请按你的 CUDA 版本安装对应 PyTorch，例如：
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+# 数据准备/建索引/评测在纯 CPU 机器上也能跑（不需 torch/transformers）
