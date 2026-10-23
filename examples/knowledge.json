@@ -1,0 +1,5 @@
+[
+  {"question": "演示甲的资料编号是什么？", "answer": "演示甲的资料编号是 ALPHA-01。注意事项：这是一条软件测试数据，不含医学结论。", "title": "合成示例甲", "source": "synthetic:alpha"},
+  {"question": "演示乙的资料编号是什么？", "answer": "演示乙的资料编号是 BETA-02。该资料仅用于验证来源追踪。", "title": "合成示例乙", "source": "synthetic:beta"},
+  {"question": "演示丙的资料编号是什么？", "answer": "演示丙的资料编号是 GAMMA-03。最后提醒：不要把演示数据当成医学建议。", "title": "合成示例丙", "source": "synthetic:gamma"}
+]

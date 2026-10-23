@@ -1,34 +1,43 @@
 name: CI
-
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, 'refactor/**']
   pull_request:
-
+permissions:
+  contents: read
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  core:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.10", "3.11"]
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.12']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Run unit tests (pure CPU)
-        run: |
-          python tests/test_chunking.py
-          python tests/test_data.py
-          python tests/test_prompts.py
-          python tests/test_retriever.py
-          python tests/test_inference_clean.py
-          python tests/test_rerank.py
-      - name: Verify installability (no heavy deps)
-        run: |
-          python -m pip install --no-deps -e .
-          python -c "import ragqa; print('ragqa import ok')"
-          ragqa-qa --help >/dev/null
-      - name: Compile checks (no heavy imports)
-        run: |
-          python -m compileall -q ragqa scripts qa_system.py app_demo.py app_local.py document_processer.py
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[api,dev]"
+      - run: python -m ruff check ragqa tests
+      - run: python -m pytest -q
+      - run: python -m build
+      - run: python -m ragqa --help
+  chroma:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e ".[api,dev]" chromadb==0.6.3 "kubernetes>=28,<33" "posthog>=2.4,<4"
+      - run: python -m pytest tests/test_chroma.py -q
+  adapters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install -e ".[api,dev,llm,ui,dense]"
+      - run: python -m pytest tests/test_optional_backends.py -q

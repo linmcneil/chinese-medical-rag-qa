@@ -1,2 +1,3 @@
-﻿"""ragqa: 基于 RAG 的中文医疗问答系统（升级版包结构）。"""
+"""Chinese medical RAG research system. Optional backends are imported lazily."""
+
 __version__ = "0.2.0"
