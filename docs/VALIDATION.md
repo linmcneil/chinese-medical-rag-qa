@@ -4,7 +4,8 @@
 
 ## 已执行
 
-- 58 项自动化测试通过，包括纯逻辑、FastAPI TestClient、CLI/API 一致性、真实 Chroma 存储查询，以及本地随机小型 Transformers/CrossEncoder 模型和 Gradio 回调。
+- 59 项自动化测试通过，包括纯逻辑、FastAPI TestClient、CLI/API 一致性、真实 Chroma 存储查询，以及本地随机小型 Transformers/CrossEncoder 模型和 Gradio 回调。
+- CLI 统一使用 UTF-8 输出；在强制 cp1252 的子进程中验证中文帮助及问答 JSON，覆盖 Windows 重定向输出曾触发的编码错误。
 - 针对旧问题的回归验证：答案区域不重复监督提示词、训练/验证分组及哈希一致、真实 EOS 的 mask、中文 ROUGE、零距离对应的最大 cosine 相似度、注意事项不被删除。
 - 对证据不足、错误引用、后端错误、输入过长和并发繁忙的处理进行了验证。
 - Ruff 静态检查通过；sdist 和 wheel 构建通过。

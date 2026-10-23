@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 from pathlib import Path
@@ -114,6 +115,11 @@ def _new_report(path: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Keep Chinese help and JSON lossless in Windows pipes and redirected files.
+    # Leave embedded/captured streams (e.g. StringIO) under the caller's control.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8")
     root = parser()
     args = root.parse_args(argv)
     try:

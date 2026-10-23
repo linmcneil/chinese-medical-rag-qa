@@ -34,7 +34,7 @@ def test_api_and_cli_use_identical_pipeline(documents, tmp_path):
         capture_output=True,
         text=True,
         encoding="utf-8",
-        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
     )
     assert run.returncode == 0, run.stderr
     cli = json.loads(run.stdout)
@@ -53,3 +53,15 @@ def test_cli_help_does_not_import_ml():
         capture_output=True,
     )
     assert run.returncode == 0, run.stderr
+
+
+def test_cli_chinese_help_on_legacy_output_encoding():
+    run = subprocess.run(
+        [sys.executable, "-m", "ragqa", "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+    )
+    assert run.returncode == 0, run.stderr
+    assert "中文医疗 RAG 研究系统 v2" in run.stdout
