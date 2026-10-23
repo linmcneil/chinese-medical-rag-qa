@@ -1,49 +1,12 @@
-# 项目路线图（ROADMAP）
+# v2 后续实验
 
-定位：把「中文医疗 RAG 问答」做成可复现、可评测、可交付的工程级项目：
-数据管线 → 分块 → 检索 → 生成 → 评测 → 发行版，全程脚本化，代码已开源。
+基础重构完成后，按以下顺序开展真实数据和模型实验：
 
-## 状态速览（2026-09-08）
-- 单元测试 49/49 通过；GitHub Actions CI 已配置（含安装性验证）
-- 检索评测（GPU，1000 问，8524 块知识库）：Hit@1/3/5 = 86.5% / 90.3% / 91.1%，平均 5.1ms/问
-- QLoRA 对照实验完成：语义相似度 0.789 → 0.851、Rouge-1 1.25 → 5.46（详见 docs/EXPERIMENT.md）
-- 交付：GPU 网页版（app_demo.py）+ 本地 CPU 版（app_local.py）+ CLI；内置样例数据；MIT 开源
+1. 人工整理固定开发/测试问题集：改写、近义负例、不可回答问题，以及证据文档和必要条件。
+2. 对 lexical / dense / dense+reranker 做独立对照；阈值只在开发集确定。
+3. 标注答案支持程度与错误类型，评估父文档或相邻片段恢复，检查长答案的条件缺失。
+4. 对真实基座模型测量冷启动、热请求、输入输出长度和内存；单独报告机器与版本。
+5. 在固定分组切分上重跑 QLoRA，对照原模型；在有证据的训练数据充分后再研究 grounded SFT。
+6. 有实际部署需要时再增加鉴权、速率限制、流式输出及独立模型服务。
 
-## 已完成
-
-### A. 工程标准化
-- [x] 包结构：ragqa/{config,data,chunking,prompts,retriever,generator,modelstore,inference,localgen}
-- [x] CLI 参数统一；requirements.txt + requirements-cpu.txt 分离；.gitignore 精确放行样例数据
-- [x] 模型下载统一走 modelstore.py（镜像优先、延迟触发）
-- [x] 单元测试 49 项（纯 CPU、CI 覆盖，含 prompts/retriever/后处理/rerank 纯逻辑）
-- [~] 日志统一：核心脚本已用 logging，个别演示脚本少量 print（不阻塞）
-
-### B. RAG 质量与评测
-- [x] 数据管线：Toyhom 六科室 CSV、蓄水池抽样、与知识库同源可回溯的评测集
-- [x] 检索评测真机出数（Hit@1/3/5、延迟、分科室，JSON 输出）
-- [x] 生成留出集对比（基座 vs LoRA：semantic 0.789→0.851、Rouge、长度）
-- [x] 生成质量工程防线：检索片段清洗 + 相关性门自动降级；去复读/客套/转场截断/限长
-- [x] bge-reranker 重排：ragqa/rerank.py + `qa_system.py --rerank` + `eval_retrieval.py --rerank` 对照输出（真机 1000 问已出：Hit@1 86.5% → 91.4%）
-- [ ] 混合检索（BM25 + 向量）或查询改写对比
-- [ ] 更大留出集的 LLM-as-judge 生成评测
-
-### C. 演示与交付
-- [x] Gradio GPU 网页版（基座/LoRA + RAG 开关）
-- [x] Gradio 本地 CPU 版（轻量生成 / 仅检索摘录）
-- [x] CLI：REPL / 单问 / 只检索
-- [x] README（中/EN）+ 架构图 + 结果表 + 免责声明；release/ 双击 .bat
-- [x] GitHub 开源：MIT LICENSE、CI、内置样例数据
-- [x] Dockerfile + docker-compose：CPU 版容器化一键启动（可选）
-- [x] pyproject.toml：`pip install -e .` 可安装 + CLI 入口（ragqa-*）
-- [ ] 回答附加「命中片段序号引用」的高亮展示（已有片段展示，可再强化）
-
-## 常见设计问题（FAQ）
-1. 为什么用 RAG 而不是只微调？
-2. 分块大小怎么定、有没有评测？
-3. Hit@k 衡量什么、不衡量什么？
-4. 检索不到 / 检索跑题怎么办？（已落地：相关性门 + 自动降级）
-5. 重复文本怎么处理？
-6. 为什么 embedding 选 bge-small-zh？
-7. 医疗内容的伦理边界怎么声明？
-
-上述问题的设计思路散落在 README、docs/EXPERIMENT.md、docs/CHANGELOG.md 与对应代码注释中，欢迎在 GitHub Issues 交流。
+以上均不是已经完成的实验。仓库内旧性能数字不计入 v2 验收。

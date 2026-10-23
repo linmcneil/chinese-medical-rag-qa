@@ -1,219 +1,155 @@
-"""数据准备模块：CSV -> 规范化记录 -> RAG / SFT JSON。
+"""Explicit local ingestion, stable IDs, and one persisted SFT split."""
 
-纯标准库实现（csv / json / random），便于单元测试与在无 GPU 的机器上运行。
-数据源字段约定（Toyhom/Chinese-medical-dialogue-data）：
-    department,title,ask,answer
-"""
 from __future__ import annotations
 
 import csv
-import io
+import hashlib
 import json
 import random
+import unicodedata
+from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, Iterable, Iterator, List, Optional
+from typing import Iterable
 
-DEFAULT_INSTRUCTION = (
-    "你是一名专业的中文医疗顾问。请根据患者对病情的描述，"
-    "结合医学知识给出专业、准确且负责的回答。"
-)
+from ragqa.types import Document
 
 
-# ---------- 编码 / 读取 ----------
-
-def detect_encoding(path) -> str:
-    """探测 CSV 编码：优先 UTF-8，回退 GB18030（该数据集实际为 GBK/GB18030）。"""
-    with open(path, "rb") as fh:
-        sample = fh.read(65536)
-    for enc in ("utf-8-sig", "utf-8"):
-        try:
-            sample.decode(enc)
-            return enc
-        except UnicodeDecodeError:
-            continue
-    return "gb18030"
+def normalize(text: str) -> str:
+    if not isinstance(text, str):
+        raise ValueError("Text fields must be strings")
+    return " ".join(unicodedata.normalize("NFKC", text).split())
 
 
-def open_text(path) -> io.TextIOBase:
-    """按探测编码打开文本文件。"""
-    return open(path, "r", encoding=detect_encoding(path), newline="")
+def digest(value: object) -> str:
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-_HEADER_TERMS = {
-    "department", "title", "ask", "answer", "question", "response",
-    "科室", "标题", "问题", "回答", "答案", "询问", "病人", "患者",
-}
+def question_key(question: str) -> str:
+    return "".join(c for c in normalize(question).casefold() if c.isalnum())
 
 
-def _looks_like_header(row) -> bool:
-    """启发式判断首行是否为表头（兼容中文表头）。"""
-    cells = [(c or "").strip() for c in row]
-    if not cells:
-        return False
-    hits = sum(1 for c in cells if c.lower() in _HEADER_TERMS)
-    # 表头通常短小；数据行里出现的关键词较少
-    if hits >= 2:
-        return True
-    return hits >= 1 and all(len(c) <= 12 for c in cells)
+def make_document(
+    question: str, answer: str, title: str = "", department: str = "", source: str = ""
+) -> Document:
+    q, a, t, d = map(normalize, (question, answer, title, department))
+    if not q or not a or not question_key(q):
+        raise ValueError("Each record needs a nonempty question and answer")
+    # Source/order changes do not change content identity.
+    rid = "doc_" + digest([q, a, t, d])[:24]
+    return Document(rid, q, a, t, d, source)
 
 
-def iter_csv_records(path) -> Iterator[Dict[str, str]]:
-    """逐行读取问答 CSV，产出 {department,title,ask,answer} 字典。
-
-    兼容三种情况：
-    - 英文表头 department,title,ask,answer
-    - 中文表头（科室/标题/问题/回答 等）
-    - 无表头（按列位置推断）
-    """
-    with open_text(path) as fh:
-        reader = csv.reader(fh)
-        first = next(reader, None)
-        if first is None:
-            return
-        header = [c.strip().lower() for c in first]
-        has_header = _looks_like_header(first) or (
-            "ask" in header and "answer" in header
-        )
-        if has_header:
-            row_iter = reader
+def read_documents(path: str | Path, encoding: str = "utf-8-sig") -> list[Document]:
+    """Read canonical/legacy JSON or Toyhom CSV. No implicit downloads or truncation."""
+    path = Path(path)
+    if path.suffix.lower() == ".csv":
+        with path.open(encoding=encoding, newline="") as f:
+            rows = list(csv.reader(f))
+        aliases = {"科室": "department", "标题": "title", "问题": "ask", "回答": "answer"}
+        header = [aliases.get(c.strip(), c.strip().lower()) for c in rows[0]] if rows else []
+        if {"department", "title", "ask", "answer"}.issubset(header):
+            names, rows = header, rows[1:]
         else:
-            for rec in _yield_from_row(first):
-                yield rec
-            row_iter = reader
-        for row in row_iter:
-            for rec in _yield_from_row(row, header if has_header else None):
-                yield rec
-
-
-def _yield_from_row(row: List[str], header: Optional[List[str]] = None) -> Iterator[Dict[str, str]]:
-    row = [c or "" for c in row]
-    if len(row) < 4:
-        return
-    if header and set(["department", "title", "ask", "answer"]).issubset(header):
-        index = {name: header.index(name) for name in ("department", "title", "ask", "answer")}
-        rec = {name: row[index[name]] for name in index}
+            names = ["department", "title", "ask", "answer"]
+        records = []
+        for number, row in enumerate(rows, 1):
+            if not row or not any(c.strip() for c in row):
+                continue
+            if len(row) != len(names):
+                raise ValueError(f"CSV record {number}: expected {len(names)} fields")
+            records.append(dict(zip(names, row)))
     else:
-        rec = {"department": row[0], "title": row[1], "ask": row[2], "answer": row[3]}
-    if rec["ask"] or rec["answer"]:
-        yield rec
-
-
-# ---------- 清洗 / 去重 ----------
-
-def _clean(v) -> str:
-    return " ".join((v or "").split()).strip()
-
-
-def normalize_records(rows: Iterable[Dict[str, str]]) -> List[Dict[str, str]]:
-    """清洗字段、丢弃无问题或空回答的记录。"""
-    out: List[Dict[str, str]] = []
-    for r in rows:
-        rec = {
-            "department": _clean(r.get("department")),
-            "title": _clean(r.get("title")),
-            "ask": _clean(r.get("ask")),
-            "answer": _clean(r.get("answer")),
-        }
-        if rec["ask"] and rec["answer"]:
-            out.append(rec)
-    return out
-
-
-def dedupe_records(records: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    """按 (ask, answer) 完全去重，保持首次出现顺序。"""
-    seen = set()
-    out: List[Dict[str, str]] = []
-    for r in records:
-        key = (r["ask"], r["answer"])
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(r)
-    return out
-
-
-def add_ids(records: List[Dict[str, str]], prefix: str = "med") -> List[Dict[str, str]]:
-    """给记录补稳定 id：{prefix}_{序号:07d}。"""
-    return [
-        {**r, "id": f"{prefix}_{i:07d}"}
-        for i, r in enumerate(records)
-    ]
-
-
-# ---------- 抽样 ----------
-
-def reservoir_sample(stream: Iterable[Dict[str, str]], k: int, seed: Optional[int] = None) -> List[Dict[str, str]]:
-    """流式蓄水池抽样：无需把整份大文件读进内存，均匀抽 k 条。"""
-    rng = random.Random(seed)
-    pool: List[Dict[str, str]] = []
-    for i, item in enumerate(stream):
-        if len(pool) < k:
-            pool.append(item)
+        records = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(records, list):
+        raise ValueError("Input JSON must be an array")
+    result: dict[str, Document] = {}
+    for number, row in enumerate(records, 1):
+        if not isinstance(row, dict):
+            raise ValueError(f"Record {number} must be an object")
+        if "question" in row:
+            q, a = row["question"], row.get("answer", "")
+        elif "ask" in row:
+            q, a = row["ask"], row.get("answer", "")
+        elif row.get("input"):
+            q, a = row["input"], row.get("output", "")
         else:
-            j = rng.randint(0, i)
-            if j < k:
-                pool[j] = item
-    return pool
+            q, a = row.get("instruction", ""), row.get("output", "")
+        try:
+            doc = make_document(
+                q,
+                a,
+                row.get("title", ""),
+                row.get("department", ""),
+                row.get("source") or f"{path.name}#record={number}",
+            )
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid record {number}: {exc}") from exc
+        if not isinstance(doc.source, str):
+            raise ValueError(f"Record {number}: source must be a string")
+        result.setdefault(doc.id, doc)
+    if not result:
+        raise ValueError("Input contains no usable records")
+    return sorted(result.values(), key=lambda d: d.id)
 
 
+def split_documents(
+    documents: Iterable[Document], val_fraction: float = 0.1, seed: int = 42
+) -> tuple[list[Document], list[Document]]:
+    """Group normalized identical questions before splitting. Paraphrases need curation."""
+    if not 0 < val_fraction < 1:
+        raise ValueError("val_fraction must be between 0 and 1")
+    groups: dict[str, list[Document]] = {}
+    for doc in sorted(documents, key=lambda d: d.id):
+        groups.setdefault(question_key(doc.question), []).append(doc)
+    keys = sorted(groups)
+    if len(keys) < 2:
+        raise ValueError("At least two distinct question groups are required")
+    random.Random(seed).shuffle(keys)
+    n = max(1, min(len(keys) - 1, round(len(keys) * val_fraction)))
+    val_keys = set(keys[:n])
+    train, val = [], []
+    for key, docs in groups.items():
+        (val if key in val_keys else train).extend(docs)
+    return train, val
 
 
-def sample_subset(records: List[Dict[str, str]], size: int, seed: Optional[int] = None) -> List[Dict[str, str]]:
-    """从记录中确定性抽取 size 条（顺序打乱，供评测使用）。"""
-    if size <= 0:
-        return []
-    if size >= len(records):
-        return list(records)
-    rng = random.Random(seed)
-    return [records[i] for i in rng.sample(range(len(records)), size)]
-
-def split_eval(records: List[Dict[str, str]], eval_size: int, seed: Optional[int] = None) -> tuple[List[Dict[str, str]], List[Dict[str, str]]]:
-    """划分评测集与剩余集合（互斥）。返回 (rest, eval_set)。"""
-    if eval_size <= 0:
-        return records, []
-    if eval_size >= len(records):
-        raise ValueError(f"eval_size={eval_size} 必须小于记录总数 {len(records)}")
-    rng = random.Random(seed)
-    picked = set(rng.sample(range(len(records)), eval_size))
-    rest = [r for i, r in enumerate(records) if i not in picked]
-    eval_set = [records[i] for i in sorted(picked)]
-    return rest, eval_set
+def write_json(path: str | Path, value: object) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-# ---------- 格式转换 / 落盘 ----------
+def write_split(
+    documents: list[Document], output: str | Path, val_fraction: float = 0.1, seed: int = 42
+) -> None:
+    import os
+    import shutil
+    import tempfile
 
-def to_rag_record(rec: Dict[str, str]) -> Dict:
-    """知识库格式：保留完整结构，供分块/向量索引使用。
-
-    instruction=患者问题(ask)，与分块器的【问题】对应；
-    title/department 由分块器渲染为【主题】【科室】。
-    """
-    return {
-        "id": rec["id"],
-        "department": rec.get("department", ""),
-        "title": rec.get("title", ""),
-        "instruction": rec["ask"],
-        "output": rec["answer"],
-        "history": [],
-    }
-
-
-def to_sft_record(rec: Dict[str, str], instruction: Optional[str] = None) -> Dict:
-    """SFT 格式（ChatGLM 风格 instruction/input/output），供后续微调用。"""
-    return {
-        "instruction": instruction or DEFAULT_INSTRUCTION,
-        "input": rec["ask"],
-        "output": rec["answer"],
-        "history": [],
-    }
-
-
-def load_json(path) -> List:
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
-
-
-def write_json(path, obj) -> None:
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(obj, fh, ensure_ascii=False, indent=1)
+    output = Path(output)
+    if output.exists():
+        raise FileExistsError("Choose a new split directory; existing splits are immutable")
+    train, val = split_documents(documents, val_fraction, seed)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=".split-", dir=output.parent))
+    try:
+        for name, rows in (("train", train), ("validation", val)):
+            write_json(stage / f"{name}.json", [asdict(d) for d in rows])
+        write_json(
+            stage / "manifest.json",
+            {
+                "schema_version": 2,
+                "seed": seed,
+                "val_fraction": val_fraction,
+                "grouping": "normalized_question",
+                "train_ids": [d.id for d in train],
+                "validation_ids": [d.id for d in val],
+                "train_sha256": digest([asdict(d) for d in train]),
+                "validation_sha256": digest([asdict(d) for d in val]),
+            },
+        )
+        os.rename(stage, output)
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise

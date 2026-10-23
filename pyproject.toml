@@ -1,60 +1,41 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "chinese-medical-rag-qa"
-version = "0.1.0"
-description = "中文医疗检索增强问答（RAG QA）：Toyhom 医疗语料清洗/分块 + bge-small-zh + Chroma 检索 + 8B CareBot(GPU)/Qwen(CPU) 生成。Chinese Medical RAG QA: chunking, Chroma retrieval, 8B/CPU LLMs and honest benchmarks."
+version = "0.2.0"
+description = "Evidence-first Chinese medical RAG research pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "linmcneil" }]
-keywords = ["rag", "retrieval-augmented-generation", "medical-ai", "llm", "chromadb", "chinese", "nlp"]
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-]
-
-# 重型依赖刻意不放进 install_requires：
-# PyTorch 需按 CUDA/CPU 自行安装；训练与生成依赖见 requirements*.txt 与下方 extras。
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = []
 
 [project.optional-dependencies]
-cpu = [
-    "requests>=2.28",
-    "transformers>=4.44",
-    "accelerate>=0.30",
-    "chromadb>=0.5.5",
-    "sentence-transformers>=3.0",
-    "gradio>=4.44",
-]
-gpu = [
-    "requests>=2.28",
-    "chromadb>=0.4.22",
-    "sentence-transformers>=2.2.2",
-    "modelscope>=1.9",
-    "transformers>=4.36",
-    "accelerate>=0.26",
-    "psutil>=5.9",
-    "bitsandbytes>=0.43",
-]
-
-[project.urls]
-Repository = "https://github.com/linmcneil/chinese-medical-rag-qa"
-Issues = "https://github.com/linmcneil/chinese-medical-rag-qa/issues"
+api = ["fastapi==0.115.12", "uvicorn>=0.30,<1", "pydantic==2.10.6"]
+ui = ["gradio==5.50.0", "fastapi==0.115.12", "pydantic==2.10.6", "httpx[socks]>=0.27,<1"]
+# Chroma 0.6 requires the older PostHog API; newer Kubernetes pulls incompatible Pydantic.
+dense = ["chromadb==0.6.3", "sentence-transformers==3.4.1", "kubernetes>=28,<33", "posthog>=2.4,<4"]
+llm = ["torch>=2.5,<3", "transformers==4.48.3", "accelerate>=1.2,<2"]
+train = ["torch>=2.5,<3", "transformers==4.48.3", "accelerate>=1.2,<2",
+         "datasets>=3,<4", "peft==0.14.0", "bitsandbytes>=0.45,<0.46"]
+dev = ["pytest>=8,<9", "httpx>=0.27,<1", "ruff>=0.9,<1", "build>=1,<2"]
 
 [project.scripts]
-ragqa-qa = "qa_system:main"
-ragqa-build-index = "document_processer:main"
-ragqa-app = "app_local:main"
-ragqa-app-gpu = "app_demo:main"
+ragqa = "ragqa.cli:main"
 
-[tool.setuptools]
-packages = ["ragqa", "scripts"]
-py-modules = ["app_demo", "app_local", "document_processer", "qa_system"]
+[tool.setuptools.packages.find]
+include = ["ragqa*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = ["integration: real optional backend integration"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

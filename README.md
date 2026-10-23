@@ -1,198 +1,127 @@
-# Chinese Medical RAG QA · 中文医疗检索增强问答
-[![CI](https://github.com/linmcneil/chinese-medical-rag-qa/actions/workflows/ci.yml/badge.svg)](https://github.com/linmcneil/chinese-medical-rag-qa/actions) · 开源仓库：https://github.com/linmcneil/chinese-medical-rag-qa
+# 中文医疗 RAG QA · v2 重构
 
-基于 **RAG（检索增强生成）** 的中文医疗问答系统：清洗真实医疗问答语料 → 字段感知分块 →
-向量化建索引 → 回答时先检索相关知识片段 → 再交给医疗大模型生成“有出处、可解释”的回答。
+面向学习研究的中文医疗资料检索系统。统一链路：**读取资料 → 答案分块 → 检索 → 可选重排 → 逐条证据筛选 → 摘录/生成 → 来源编号检查**。CLI、FastAPI、Gradio 使用同一个 `RAGPipeline`。
 
-> 本项目仅供学习研究，输出不构成医疗建议，涉及健康问题请及时就医。
+本项目不是医疗产品：历史问答未经临床审核，引用编号和相似度不能证明医学正确性。资料不足、检索故障或来源编号校验失败时，系统不会自动切换成无资料的模型回答。
 
----
+## 本次重构解决什么
 
-## 1. 结果速览（2026-09-08 · AutoDL RTX 5090）
+- SFT 前缀只出现一次，只监督答案及 EOS；按序列长度生成 attention mask。
+- 按规范化问题分组，一次划分并保存训练/验证集、ID 和哈希；训练时不重新合并划分。
+- 每个块都包含答案正文，保留原问题、来源和字符偏移；重复答案不会丢失其他记录的来源。
+- 检索统一使用 cosine **similarity**（越大越相关），逐条筛选；距离为零的结果不再被误判。
+- 回答清理仅整理首尾空白，保留注意事项、否定、拒答和不确定性。
+- 相同入口共享模型实例、提示词、筛选策略和结构化返回；单进程限制一个在途请求。
+- 中文 ROUGE 使用显式汉字 token；评测区分原问题回查、人工整理评测和不可回答样本。
+- 索引和切分产物写入新目录，记录语料指纹、参数及模型版本，拒绝原地覆盖。
 
-| 实验 | 关键数字 | 出处 |
-| --- | --- | --- |
-| 检索 Hit@1 / Hit@3 / Hit@5 | **86.5% / 90.3% / 91.1%**（1000 问留出样本，8524 块知识库） | `docs/EXPERIMENT.md`、`data/eval_result.json` |
-| 检索延迟 | 平均 **5.1 ms/查询**（GPU，单次 Top-k，复测） | `data/eval_result_rerank.json` |
-| 重排对比（Top-20 + bge-reranker-base） | Hit@1 **86.5% → 91.4%**，Hit@3 90.3% → 92.3%，Hit@5 91.1% → 92.3% | 同上 |
-| 重排延迟 | 向量 5.1ms + 重排 25.1ms ≈ **30.3 ms/问**（GPU，端到端） | 同上 |
-| 生成对比（基座 vs QLoRA） | bge 语义相似度 **0.789 → 0.851**；回答平均长度 390 → 262 字 | `outputs/semantic_summary.json` |
-| 微调成本 | 5000 条 × 2 epoch，RTX 5090 上约 **25 分钟**（QLoRA 4bit，adapter 168MB） | `docs/EXPERIMENT.md` |
-| 工程测试 | 核心纯逻辑单元测试 **49/49 通过**（分块 14 + 数据 9 + 逻辑 26） | `tests/`、GitHub Actions CI |
+**旧实验结果仍保存在 `data/` 和 `docs/EXPERIMENT.md`，不代表 v2 效果。** 旧 LoRA 训练和评测存在已定位的问题，必须修复后重训重测。迁移细节见 [docs/MIGRATION.md](docs/MIGRATION.md)，设计与限制见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
-一句话定位：**用向量检索把“大模型幻觉 + 缺领域知识”的问题，替换成“先查资料、再组织回答”。**
+## 先在 Windows 跑通：不下载模型
 
----
+Python 3.10–3.12。下面在 PowerShell 中执行，项目示例位置为 `D:\code\chinese-medical-rag-qa`：
 
-## 2. 架构
-
-```
- 数据层                    索引层                       问答层
-─────────────           ──────────────             ──────────────
-Toyhom 医疗语料 ──> 清洗/抽样 ──> bge-small-zh ──> Chroma 8524 块
-(GBK/UTF-8 识别)   字段感知分块      ~100MB          sha1 断点续传
-                    【科室】【主题】                   批量写入
-                        │                                ▲
-                        │            eval.json(1000 问) ──┘  Hit@k 评测
-                        │
-  用户问题 ────────────> Top-k 检索
-                          │  ① 片段清洗（只留解答主体）
-                          │  ② 关键词相关性门（脏检索自动降级）
-                          ▼
-                   ┌──────────────┐
-                   │ 8B CareBot（GPU，4bit）  ← 可选挂 LoRA
-                   │ Qwen1.5B（CPU 发行版）    ← 可选“仅检索摘录”
-                   └──────────────┘
-                          │  去复读 / 去客套 / 转场截断 / 限长
-                          ▼
-                    回答 + 命中片段
+```powershell
+cd D:\code\chinese-medical-rag-qa
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[api,dev]"
+.\.venv\Scripts\python.exe -m ragqa build --data examples/knowledge.json --index artifacts/demo-v2
+.\.venv\Scripts\python.exe -m ragqa ask --index artifacts/demo-v2 --question "演示甲的资料编号是什么？"
+.\.venv\Scripts\python.exe -m ragqa serve --index artifacts/demo-v2
 ```
 
-工程链路一句话：`数据 → 分块 → 向量化 → 检索 → 生成 → 清理 → 评测`，每段都有脚本和口径说明。
+打开 http://127.0.0.1:8000/docs 。在 `POST /v1/answers` 提交：
 
----
+```json
+{"question": "演示甲的资料编号是什么？"}
+```
 
-## 3. 主要设计点
+默认使用**汉字二元组/英文词 cosine 检索 + 原文摘录**。这是离线可运行的基线，不能与旧 BGE 向量检索成绩直接比较。`examples/knowledge.json` 是明确标记的合成数据，不含医学结论。
 
-1. **可复现的数据管线**：蓄水池抽样 + 固定 seed；一份 CSV 同时产出知识库、评测集、SFT 格式，
-   评测记录与知识库同源、带 `rid` 可回溯。
-2. **字段感知分块**：按【科室】【主题】【问题】【解答】边界切分，长文不跨主题；
-   分块器 14 个单元测试覆盖字段边界/句号/硬限/去重等。
-3. **索引可续跑**：内容 sha1 哈希去重入库，中断重跑即续传；批量 256 条写入；`--rebuild` 可重建。
-4. **模型加载可降级**：4bit/8bit 量化依赖 bitsandbytes，缺失时明确回退普通精度/CPU，
-   不“假量化”；重型依赖全部延迟导入（`--help`/只检索不需要 torch）。
-5. **脏检索自动降级（新增）**：注入上下文前先清洗片段，再做关键词相关性门；
-   顶配命中与问题不相关时自动切换为“模型直接回答”，避免脏语料带偏答案。
-6. **回答后处理（新增）**：去提示词复读、去“答案是/参考文献/医生询问”等转场截断、
-   整句去重、删除“祝您康复/仅供参考/AI 身份声明”等语料客套尾巴、按句号限长。
-7. **可选 reranker 精排（新增）**：`--rerank` 用 bge-reranker 对向量 top-N 候选二次精排，
-   1000 问实测：Hit@1 86.5% → 91.4%（+4.9pp），端到端约 30ms/问。
+Linux/macOS 使用 `.venv/bin/python`。安装后也可用 `ragqa` 命令；所有功能都能通过 `python -m ragqa --help` 查看。
 
-8. **有对照的实验**：基座 vs LoRA 微调在留出集上比语义相似度与 Rouge；
-   LoRA 更贴标准答案但把语料营销式客套学歪了 → 发行版默认“基座 + RAG”，LoRA 保留作对比开关。
+已有原始数据可直接转换为新索引，不覆盖旧数据：
 
----
+```powershell
+.\.venv\Scripts\python.exe -m ragqa build --data data/train.json --index artifacts/medical-lexical-v2
+```
 
-## 4. 快速开始
+JSON 支持新格式 `question/answer`、旧 RAG 格式 `instruction/output` 和旧 SFT 格式 `input/output`。CSV 支持 Toyhom 的四列及中英文表头，GBK 数据须明确传 `--encoding gb18030`。遇到空问题、空答案或损坏记录会报告错误，不静默跳过。
 
-### 4.1 本地 CPU（无需显卡，推荐先试）
+## 网页
 
-前置：Python 3.10+；Windows 可双击 `release/安装CPU版.bat`，Linux/macOS 用命令行。
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[ui]"
+.\.venv\Scripts\python.exe -m ragqa ui --index artifacts/demo-v2
+```
+
+打开 http://127.0.0.1:7861 。网页显示回答、实际使用的来源、状态和分阶段耗时。默认仅监听本机，不建立公开分享链接。
+
+## BGE 向量检索与重排
+
+先按 CPU 或 CUDA 环境安装 PyTorch，再安装 `.[dense]`。构建向量索引时必须固定模型的完整 Hugging Face commit SHA；查询端读取索引 manifest，使用同一模型和版本。这样更换模型不会悄悄污染旧索引。
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[dense]"
+# 查询模型的当前 commit，把打印出的完整 SHA 填入下一条命令。
+.\.venv\Scripts\python.exe -c "from huggingface_hub import HfApi; print(HfApi().model_info('BAAI/bge-small-zh-v1.5').sha)"
+.\.venv\Scripts\python.exe -m ragqa build --data data/train.json --index artifacts/medical-bge-v2 --backend chroma --embedding-revision MODEL_COMMIT_SHA
+.\.venv\Scripts\python.exe -m ragqa ask --index artifacts/medical-bge-v2 --question "你的问题" --rerank
+```
+
+有 CUDA 时可加 `--device cuda`。重排器在同一进程中复用；可通过 `--rerank-model`、`--rerank-revision` 固定版本。
+
+`--min-score` 默认 0.25，**只是尚未校准的起点**。它不是置信度，不应在不同检索后端之间直接迁移。应在独立开发集上选择阈值，再在未参与调参的测试集报告效果。重排阈值使用独立的 `--min-rerank-score`。
+
+## 接入生成模型
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e ".[llm]"
+.\.venv\Scripts\python.exe -m ragqa ui --index artifacts/medical-bge-v2 --generator transformers --model Qwen/Qwen2.5-1.5B-Instruct
+```
+
+生成是可选项；第一次有效请求才加载模型。默认贪心解码。GPU 可用 `--device cuda`；4bit 还需安装匹配环境的 bitsandbytes，再加 `--quantize 4bit`。不会静默切换设备或量化方案。
+
+模型 tokenizer 必须提供 chat template 与 EOS。超出上下文 token 预算时返回错误，不截掉用户问题或证据。`--adapter` 仅用于重新训练的 v2 实验 adapter，不能继续沿用旧结果。CPU 模型速度和内存取决于模型与机器，本次不宣称真实模型的延迟或质量提升。
+
+## 评测
+
+```powershell
+.\.venv\Scripts\python.exe -m ragqa make-eval --data examples/knowledge.json --out artifacts/self-check.json
+.\.venv\Scripts\python.exe -m ragqa eval --index artifacts/demo-v2 --dataset artifacts/self-check.json --out artifacts/self-check-result.json
+```
+
+自动生成的评测文件始终标为 `self_retrieval`：它检查索引一致性，不是留出集泛化成绩。报告含 document-level Hit@1/3/5、Recall@k、候选范围内 MRR、逐条结果及端到端 p50/p95。文档排名会合并同一文档的多个块；最多考察 `--candidates` 个检索块中的文档。
+
+人工整理评测格式与分组原则见 [docs/EVALUATION.md](docs/EVALUATION.md)。不可回答样本参与拒答率统计，不混入可回答样本的检索分母。请求错误单独统计，不能充当成功拒答。`--retrieval-only` 不调用生成器。
+
+## 可选 QLoRA 实验
+
+```powershell
+.\.venv\Scripts\python.exe -m ragqa split --data data/train.json --out artifacts/split-v2 --seed 42
+# 仅 CUDA 环境，先安装匹配的 PyTorch。
+.\.venv\Scripts\python.exe -m pip install -e ".[train]"
+.\.venv\Scripts\python.exe -m ragqa train --split artifacts/split-v2 --model MODEL_ID --revision MODEL_COMMIT_SHA --out artifacts/lora-v2
+```
+
+训练是无检索上下文的 answer-only SFT 对照实验，不能单独证明 RAG 的依据忠实性。超过长度的样本不截断训练，会记录在 `tokenized_manifest.json` 的 `skipped_ids`。保存的 `validation.json` 始终与训练组互斥。近义改写、相同病例的其他提问仍须在数据整理阶段做语义分组，本工具只保证规范化相同问题不跨集。
+
+## 测试与部署
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m ruff check ragqa tests
+.\.venv\Scripts\python.exe -m build
+```
+
+核心/API 测试不下载模型。可选 Chroma 测试使用真实数据库和合成向量；可选模型适配测试使用本地随机小模型，不代表医学效果。CI 在 Linux/Windows 上跑核心/API 测试，另有 Chroma 集成任务。
 
 ```bash
-# 1. 安装 CPU 版 PyTorch 与其余依赖（torch 约 200MB，其余约几分钟）
-python -m venv .venv-cpu
-.venv-cpu/Scripts/pip install torch --index-url https://download.pytorch.org/whl/cpu   # Windows
-.venv-cpu/Scripts/pip install -r requirements-cpu.txt
-
-# 2. 用仓库内置样例构建本地索引（首次约几分钟）
-.venv-cpu/Scripts/python document_processer.py --device cpu
-
-# 3. 启动网页（http://127.0.0.1:7861）
-.venv-cpu/Scripts/python app_local.py --cpu-model Qwen/Qwen2.5-1.5B-Instruct
+docker compose up --build
 ```
 
-- `app_local.py` 默认用 **Qwen2.5-1.5B-Instruct 在 CPU 生成**（首次自动下载约 3GB，建议 8G 内存）；
-  也可选 **“仅检索摘录”** 模式：不下载大模型，直接把最相关知识片段的解答展示出来。
-- 想更轻量可换 `--cpu-model Qwen/Qwen2.5-0.5B-Instruct`（约 1GB）。
+Docker 默认提供合成样例的离线 API，监听本机 8000，不自动下载大模型。尚未实现账号、鉴权、租户隔离、流式生成、多进程模型服务或临床审核；这是本地研究服务。每个进程最多一个在途请求，忙时 API 返回 503 和 `Retry-After`。
 
-### 4.2 GPU / 云端（完整 8B 版）
+## 数据与许可
 
-```bash
-pip install -r requirements.txt        # GPU 另装匹配 CUDA 的 PyTorch
-python document_processer.py --device cuda
-python qa_system.py --question "高血压患者能吃柚子吗？"
-```
-
-网页发行版：`bash start_release.sh`（AutoDL 上监听 7860）；
-本机访问用 SSH 隧道 `release/双击打开演示.bat`（对应云端 GPU 发行版）。
-
-### 4.3 评测与测试
-
-```bash
-python tests/test_chunking.py          # 14/14
-python tests/test_data.py              # 9/9
-python tests/test_prompts.py           # 5/5
-python tests/test_retriever.py         # 6/6
-python tests/test_inference_clean.py   # 9/9
-python tests/test_rerank.py            # 6/6
-python -m scripts.eval_retrieval --limit 1000 --device cuda --out data/eval_result.json
-python scripts/eval_generation.py --model-dir models/CareBot_Medical \
-      --lora-path outputs/lora-med-v1 --val outputs/lora-med-v1/val_split.json --limit 60
-```
-
-### 4.4 Docker 一键运行（可选，CPU 版）
-
-```bash
-docker compose up --build        # 打开 http://127.0.0.1:7861
-# 或手动：
-docker build -t ragqa-cpu .
-docker run -p 7861:7861 -v "$PWD/models:/app/models" \
-       -v "$PWD/chroma_data:/app/chroma_data" ragqa-cpu
-```
-
-> 首次启动会自动用内置样例建索引并下载 CPU 小模型（约 1–3GB）；
-> 不想下载大模型可在网页里选「仅检索摘录」模式。
-
-### 4.5 作为 Python 包安装（开发者可选）
-
-```bash
-pip install -e .            # 只装库本体与 CLI（重型依赖另行安装）
-pip install -e ".[cpu]"     # 或补 CPU 版依赖（PyTorch 请先按 CPU 源安装）
-ragqa-qa --help
-```
-
----
-
-## 5. 评测口径（诚实说明）
-
-- **Hit@k**：评测记录从知识库内抽样，gold=`rid`，衡量“分块 → 嵌入 → 检索”整条管线的
-  **端到端一致性**；命中偏高是正常现象，它不等同于“回答质量”。
-- **回答质量**：目前用留出集做 基座/LoRA 语义相似度与 Rouge 对比 + 人工抽样；
-  LLM-as-judge 与临床校验仍属后续计划（见 `docs/ROADMAP.md`）。
-- 生成的回答会在端上做一层“去语料味”清理，数字对比如上表。
-
----
-
-## 6. 项目结构
-
-```
-├── ragqa/                  # 核心库
-│   ├── data.py             # CSV 编码识别 / 清洗 / 蓄水池抽样 / 三种格式
-│   ├── chunking.py         # 字段感知分块 + 去重 + 记录级溯源
-│   ├── retriever.py        # Chroma Top-k（返回 distance / rid）
-│   ├── inference.py        # 8B 推理 + 生成后处理 + 检索清洗/相关性门
-│   ├── localgen.py         # CPU 小模型（Qwen）聊天模板生成
-│   ├── modelstore.py       # 模型本地化下载（镜像优先、延迟触发）
-│   └── config.py / prompts.py / generator.py
-├── app_demo.py             # GPU 网页发行版（基座/LoRA + RAG 开关）
-├── app_local.py            # 本地 CPU 网页版（轻量生成 / 仅检索摘录）
-├── qa_system.py            # CLI：REPL / 单问 / 只检索
-├── document_processer.py   # 建索引（断点续传 / --rebuild / --device）
-├── pyproject.toml          # 可安装包 + CLI 入口（ragqa-*）
-├── Dockerfile              # CPU 版容器镜像（可选）
-├── docker-compose.yml      # 一键起容器（端口 7861）
-├── scripts/                # prepare_data / eval_retrieval / train_lora / eval_generation
-├── tests/                  # 纯 CPU 单元测试（49 项）
-├── release/                # 双击 .bat：云端隧道版 / 本地 CPU 安装与启动
-├── data/                   # 仓库内置样例数据与评测结果（小文件）
-└── docs/                   # EXPERIMENT / ROADMAP / CHANGELOG
-```
-
----
-
-## 7. 数据与授权
-
-- 数据整理自 [Toyhom/Chinese-medical-dialogue-data](https://github.com/Toyhom/Chinese-medical-dialogue-data)
-  （内科等样例，仓库内置约 3.3MB；全量按科室约 45–105MB/份），以该仓库 LICENSE 为准，研究用途。
-- 模型：`BAAI/CareBot_Medical_multi-llama3-8b-instruct`（GPU 主发行版）、
-  `Qwen/Qwen2.5-1.5B-Instruct`（CPU 发行版，Apache-2.0）。
-- 本项目代码以 MIT 协议开源（见 LICENSE）。
-
----
-
-## 8. 边界与后续
-
-- 目前知识库为 Toyhom 问答语料，不等于临床指南；回答未经临床审核。
-- 后续计划（按性价比）：更大留出集的 LLM-as-judge 生成评测、端到端延迟基准、临床数据接入。
-- 更新日志见 `docs/CHANGELOG.md`；英语摘要见 `README.en.md`。
+旧样例来源：[Toyhom/Chinese-medical-dialogue-data](https://github.com/Toyhom/Chinese-medical-dialogue-data)。代码 MIT；数据、模型的授权分别遵循各自来源，不能由本仓库代码许可推断数据或模型的使用权限。
